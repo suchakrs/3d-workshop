@@ -127,9 +127,27 @@ material.opacityNode = mix(float(1.0), farFactor, uFade);
 material.transparent = true;
 ```
 
-Because size/colour/opacity are evaluated **on the GPU per point**, a million
-points cost you almost nothing on the CPU — you upload the buffers once and the
-node graph does the rest each frame.
+**Position — animated noise (motion over time):**
+
+```ts
+import { positionLocal, time, mx_fractal_noise_vec3, vec3 } from "three/tsl";
+
+// `time` is a built-in uniform the renderer advances every frame.
+const flow  = time.mul(uNoiseSpeed);                       // scroll the field
+const noise = mx_fractal_noise_vec3(                       // 3D fractal noise
+  positionLocal.mul(uNoiseScale).add(vec3(flow, flow.mul(0.7), flow.mul(1.3))),
+);
+material.positionNode = positionLocal.add(noise.mul(uNoiseAmt).mul(uAnimate));
+```
+
+Each point drifts through a time-evolving noise field. The crucial part: the
+displacement is computed **per point on the GPU in the vertex stage** — animating
+a million points adds *zero* per-frame JS. `time` updates itself; `uAnimate`
+(0/1) and `uNoiseAmt`/`uNoiseSpeed`/`uNoiseScale` tune it live without recompiling.
+
+Because size/colour/opacity/position are evaluated **on the GPU per point**, a
+million points cost you almost nothing on the CPU — you upload the buffers once
+and the node graph does the rest each frame.
 
 > **Updating without recompiling:** changing a `uniform`'s `.value` (point size,
 > fade) is free. Changing the *graph* (swapping `colorNode` for a different mode)
@@ -176,10 +194,14 @@ new PLYLoader().load("/scan.ply", (geometry) => {
 - Example 08 detects WebGPU (`"gpu" in navigator`). Present → TSL path; absent →
   WebGL `THREE.Points` fallback with a banner.
 - **Fallback feature parity:** the WebGL path supports point size, size
-  attenuation, and all three colour modes (height / uniform / grayscale). The
-  **distance fade** control is a TSL/WebGPU feature and is a no-op on the
-  fallback — fading every point per frame on the CPU is exactly the work the GPU
-  path avoids.
+  attenuation, all three colour modes (height / uniform / grayscale), and the
+  **noise animation**. The animation is the clearest TSL-vs-old-way contrast in
+  the example: WebGPU sets `material.positionNode` to a noise node; the WebGL
+  fallback gets the *same* motion by hand-patching the stock point vertex shader
+  with `onBeforeCompile` + a GLSL value-noise (cf. §2 — "fragile, but it works").
+  Both run the displacement on the GPU per vertex. The **distance fade** control
+  is the one feature still WebGPU-only and a no-op on the fallback — fading every
+  point per frame on the CPU is exactly the work the GPU path avoids.
 - **For the live demo:** pre-flight the room's browser. Use a recent
   **Chrome/Edge**. If WebGPU is unavailable you still get the WebGL fallback, but
   the TSL story is the point — have a backup machine/screenshot.
@@ -192,7 +214,11 @@ new PLYLoader().load("/scan.ply", (geometry) => {
    GPU start to drop frames?
 3. **Crank distance fade to 1.0.** The far terrain dissolves into the
    background — overdraw drops, foreground reads cleaner.
-4. **Swap in a real `.ply`** (section 5) and reuse the same material.
+4. **Play with the noise animation.** Toggle *animate*, then push *amount* /
+   *speed* / *scale*. Low scale + low amount = a gentle living surface; high
+   amount = the cloud boils apart. The FPS counter barely moves at 1M — the
+   motion is all GPU.
+5. **Swap in a real `.ply`** (section 5) and reuse the same material.
 
 ## Optional advanced
 

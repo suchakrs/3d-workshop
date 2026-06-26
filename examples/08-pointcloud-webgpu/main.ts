@@ -50,6 +50,10 @@ const params = {
   colorMode: "height" as "height" | "uniform" | "grayscale",
   uniformColor: "#66ccff",
   distanceFade: 0.0, // 0 = no fade, 1 = strong far-fade
+  animate: true, // drift each point through a time-evolving noise field
+  noiseAmount: 3.0, // displacement amplitude in world units
+  noiseSpeed: 0.3, // how fast the noise field scrolls in time
+  noiseScale: 0.05, // spatial frequency of the noise (× position)
 };
 
 // `points` is rebuilt when the point count changes; the active builder is set
@@ -64,7 +68,19 @@ let applyParams: () => void;
 async function initWebGPU(): Promise<{ render: () => void; renderer: WebGPURenderer }> {
   const { WebGPURenderer, PointsNodeMaterial } = await import("three/webgpu");
   const TSL = await import("three/tsl");
-  const { uniform, attribute, positionView, color, float, mix, clamp, vec3 } = TSL;
+  const {
+    uniform,
+    attribute,
+    positionView,
+    positionLocal,
+    color,
+    float,
+    mix,
+    clamp,
+    vec3,
+    time,
+    mx_fractal_noise_vec3,
+  } = TSL;
 
   const renderer = new WebGPURenderer({ canvas, antialias: false });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -76,6 +92,10 @@ async function initWebGPU(): Promise<{ render: () => void; renderer: WebGPURende
   const uAtten = uniform(params.sizeAttenuation ? 1 : 0);
   const uFade = uniform(params.distanceFade);
   const uColor = uniform(color(params.uniformColor));
+  const uAnimate = uniform(params.animate ? 1 : 0);
+  const uNoiseAmt = uniform(params.noiseAmount);
+  const uNoiseSpeed = uniform(params.noiseSpeed);
+  const uNoiseScale = uniform(params.noiseScale);
 
   // View-space distance from the camera to the point (vertex stage).
   const dist = positionView.xyz.length();
@@ -104,11 +124,24 @@ async function initWebGPU(): Promise<{ render: () => void; renderer: WebGPURende
   const farFactor = clamp(float(1).sub(dist.div(220.0)), 0.0, 1.0);
   const opacityNode = mix(float(1.0), farFactor, uFade);
 
+  // POSITION node — animate each point through a 3D noise field (vertex stage).
+  //   `time` is a built-in TSL uniform the renderer advances every frame, so the
+  //   motion is driven entirely on the GPU — no per-frame JS over 1M points.
+  //   We sample fractal noise at (scaled position + time-scroll) and offset the
+  //   point by it. uAnimate (0/1) and uNoiseAmt scale the effect live.
+  const flow = time.mul(uNoiseSpeed);
+  const noise = mx_fractal_noise_vec3(
+    positionLocal.mul(uNoiseScale).add(vec3(flow, flow.mul(0.7), flow.mul(1.3))),
+  );
+  const positionNode = positionLocal.add(noise.mul(uNoiseAmt).mul(uAnimate));
+
   const material = new PointsNodeMaterial();
   // @types/three 0.171 omits PointsNodeMaterial.sizeNode (present at runtime).
   (material as unknown as { sizeNode: unknown }).sizeNode = sizeNode;
   material.colorNode = colorNodeFor(params.colorMode);
   material.opacityNode = opacityNode;
+  // @types/three 0.171 omits PointsNodeMaterial.positionNode (present at runtime).
+  (material as unknown as { positionNode: unknown }).positionNode = positionNode;
   material.transparent = true;
   material.depthWrite = true;
 
@@ -131,6 +164,10 @@ async function initWebGPU(): Promise<{ render: () => void; renderer: WebGPURende
     uAtten.value = params.sizeAttenuation ? 1 : 0;
     uFade.value = params.distanceFade;
     (uColor.value as unknown as THREE.Color).set(params.uniformColor);
+    uAnimate.value = params.animate ? 1 : 0;
+    uNoiseAmt.value = params.noiseAmount;
+    uNoiseSpeed.value = params.noiseSpeed;
+    uNoiseScale.value = params.noiseScale;
     material.colorNode = colorNodeFor(params.colorMode);
     material.needsUpdate = true; // colour mode changes the shader graph
   };
@@ -144,6 +181,23 @@ async function initWebGPU(): Promise<{ render: () => void; renderer: WebGPURende
 // ---------------------------------------------------------------------------
 // WebGL fallback path (no TSL)
 // ---------------------------------------------------------------------------
+
+// The WebGPU path animates points with a TSL noise node. WebGL has no TSL, so
+// the same idea is done the *old* way (cf. doc §2): patch PointsMaterial's
+// vertex shader with onBeforeCompile and a hand-written GLSL value-noise. Still
+// runs on the GPU per point — no million-iteration JS loop per frame.
+const NOISE_GLSL = /* glsl */ `
+  float h31(vec3 p){ p = fract(p * 0.3183099 + 0.1); p *= 17.0;
+    return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+  float vnoise(vec3 x){
+    vec3 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(mix(h31(i+vec3(0,0,0)), h31(i+vec3(1,0,0)), f.x),
+                   mix(h31(i+vec3(0,1,0)), h31(i+vec3(1,1,0)), f.x), f.y),
+               mix(mix(h31(i+vec3(0,0,1)), h31(i+vec3(1,0,1)), f.x),
+                   mix(h31(i+vec3(0,1,1)), h31(i+vec3(1,1,1)), f.x), f.y), f.z);
+  }
+`;
+
 function initWebGL(): { render: () => void; renderer: THREE.WebGLRenderer } {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -154,6 +208,34 @@ function initWebGL(): { render: () => void; renderer: THREE.WebGLRenderer } {
     sizeAttenuation: params.sizeAttenuation,
     vertexColors: true,
   });
+
+  // Inject the animated displacement into the stock point vertex shader. We keep
+  // a handle on the compiled `shader` so the GUI / render loop can drive its
+  // uniforms (uTime is advanced every frame in `rebuild`'s onBeforeRender).
+  let shaderRef: { uniforms: Record<string, { value: number }> } | null = null;
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = { value: 0 };
+    shader.uniforms.uAnimate = { value: params.animate ? 1 : 0 };
+    shader.uniforms.uNoiseAmt = { value: params.noiseAmount };
+    shader.uniforms.uNoiseSpeed = { value: params.noiseSpeed };
+    shader.uniforms.uNoiseScale = { value: params.noiseScale };
+    shader.vertexShader =
+      "uniform float uTime, uAnimate, uNoiseAmt, uNoiseSpeed, uNoiseScale;\n" +
+      NOISE_GLSL +
+      shader.vertexShader.replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+        float nt = uTime * uNoiseSpeed;
+        vec3 np = position * uNoiseScale;
+        vec3 disp = vec3(
+          vnoise(np + vec3(nt, 0.0, 0.0)),
+          vnoise(np + vec3(0.0, nt * 0.7, 11.0)),
+          vnoise(np + vec3(23.0, 0.0, nt * 1.3))
+        ) * 2.0 - 1.0;
+        transformed += disp * uNoiseAmt * uAnimate;`,
+      );
+    shaderRef = shader as unknown as typeof shaderRef;
+  };
 
   // The fallback can't compute colour on the GPU, so we precompute a height
   // buffer and a grayscale (luminance) buffer and swap the colour attribute.
@@ -176,6 +258,10 @@ function initWebGL(): { render: () => void; renderer: THREE.WebGLRenderer } {
     geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
     points = new THREE.Points(geo, material);
+    // Advance the noise clock every frame (cheap: one uniform write, not 1M).
+    points.onBeforeRender = () => {
+      if (shaderRef) shaderRef.uniforms.uTime.value = performance.now() / 1000;
+    };
     scene.add(points);
     countEl.textContent = count.toLocaleString();
     applyParams();
@@ -184,6 +270,12 @@ function initWebGL(): { render: () => void; renderer: THREE.WebGLRenderer } {
   applyParams = () => {
     material.size = params.pointSize;
     material.sizeAttenuation = params.sizeAttenuation;
+    if (shaderRef) {
+      shaderRef.uniforms.uAnimate.value = params.animate ? 1 : 0;
+      shaderRef.uniforms.uNoiseAmt.value = params.noiseAmount;
+      shaderRef.uniforms.uNoiseSpeed.value = params.noiseSpeed;
+      shaderRef.uniforms.uNoiseScale.value = params.noiseScale;
+    }
     // distanceFade is a WebGPU/TSL feature — no-op here (see doc 08).
     if (params.colorMode === "uniform") {
       material.vertexColors = false;
@@ -230,6 +322,12 @@ async function main(): Promise<void> {
     .onChange(applyParams);
   gui.addColor(params, "uniformColor").name("uniform colour").onChange(applyParams);
   gui.add(params, "distanceFade", 0, 1, 0.01).name("distance fade").onChange(applyParams);
+
+  const anim = gui.addFolder("animation (noise)");
+  anim.add(params, "animate").name("animate").onChange(applyParams);
+  anim.add(params, "noiseAmount", 0, 15, 0.1).name("amount").onChange(applyParams);
+  anim.add(params, "noiseSpeed", 0, 3, 0.01).name("speed").onChange(applyParams);
+  anim.add(params, "noiseScale", 0.005, 0.3, 0.005).name("scale").onChange(applyParams);
 
   // Resize
   window.addEventListener("resize", () => {
