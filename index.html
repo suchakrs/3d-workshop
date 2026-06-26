@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fundamentals of 3D Development — Workshop</title>
+    <link rel="stylesheet" href="./src/styles/base.css" />
+  </head>
+  <body>
+    <main class="menu">
+      <h1>Fundamentals of 3D Development</h1>
+      <p class="lead">
+        Interactive half-day workshop. Each example is a standalone explorable
+        playground — open it, tweak the controls, read the matching doc in
+        <code>workshop-docs/</code>. The examples build up one evolving scene,
+        ending in a 1&nbsp;million-point WebGPU point cloud.
+      </p>
+
+      <ol>
+        <li>
+          <a class="topic" href="./examples/01-space-transforms/">3D space &amp; transforms</a>
+          <span class="desc">— coordinate space, position/rotation/scale, parent-child</span>
+          <ul>
+            <li>
+              <a class="topic" href="./examples/01-2-transform-matrix/">01-2 · Transform matrices</a>
+              <span class="desc">— drag a gizmo, read the live 4×4 matrix</span>
+            </li>
+          </ul>
+        </li>
+        <li>
+          <a class="topic" href="./examples/02-topology/">Modeling &amp; topology</a>
+          <span class="desc">— vertices, faces, BufferGeometry, normals, winding</span>
+        </li>
+        <li>
+          <a class="topic" href="./examples/03-materials/">Materials</a>
+          <span class="desc">— Basic → PBR Standard/Physical, maps, transparency</span>
+        </li>
+        <li>
+          <a class="topic" href="./examples/04-lighting/">Lighting</a>
+          <span class="desc">— ambient/directional/point/spot, shadows, IBL</span>
+        </li>
+        <li>
+          <a class="topic" href="./examples/05-cameras/">Cameras</a>
+          <span class="desc">— perspective vs ortho, FOV, near/far, frustum</span>
+        </li>
+        <li>
+          <a class="topic" href="./examples/06-threejs-vanilla/">three.js (vanilla)</a>
+          <span class="desc">— the full assembled scene + render loop</span>
+        </li>
+        <li>
+          <a class="topic" href="./examples/07-react-three-fiber/">React Three Fiber</a>
+          <span class="desc">— the same scene, declaratively</span>
+        </li>
+        <li>
+          <a class="topic" href="./examples/08-pointcloud-webgpu/">Point cloud (WebGPU + TSL)</a>
+          <span class="desc">— 1M points from a 3D scan, high-performance rendering</span>
+        </li>
+      </ol>
+
+      <p class="footer">
+        Docs &amp; setup: <code>workshop-docs/00-overview.md</code> ·
+        Point-cloud deep dive (take-home):
+        <code>workshop-docs/08-pointcloud-webgpu-tsl.md</code>
+      </p>
+    </main>
+  </body>
+</html>

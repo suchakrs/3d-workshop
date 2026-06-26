@@ -1,0 +1,27 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #0b0e14; color: #e6e6e6;
+  font: 14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+.stage { position: fixed; inset: 0; }
+canvas { display: block; }
+
+.overlay { position: fixed; top: 12px; left: 12px; max-width: 340px;
+  padding: 12px 14px; background: rgba(0,0,0,.55); border-radius: 8px;
+  pointer-events: none; backdrop-filter: blur(4px); }
+.overlay h1 { margin: 0 0 6px; font-size: 15px; }
+.overlay p { margin: 4px 0; opacity: .85; }
+.overlay code { background: rgba(255,255,255,.12); padding: 0 4px; border-radius: 3px; }
+.overlay a { color: #7db4ff; pointer-events: auto; }
+.overlay .stat { font-variant-numeric: tabular-nums; color: #8fdc8f; }
+.overlay .warn { color: #ffcc66; }
+
+/* Landing menu */
+.menu { max-width: 680px; margin: 56px auto; padding: 0 20px; }
+.menu h1 { font-size: 24px; }
+.menu p.lead { opacity: .8; }
+.menu ol { padding-left: 20px; }
+.menu li { margin: 8px 0; }
+.menu a { color: #7db4ff; text-decoration: none; }
+.menu a:hover { text-decoration: underline; }
+.menu .topic { font-weight: 600; }
+.menu .desc { opacity: .7; }
+.menu .footer { margin-top: 32px; opacity: .7; font-size: 13px; }

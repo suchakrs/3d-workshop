@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>05 · Cameras</title>
+    <link rel="stylesheet" href="../../src/styles/base.css" />
+    <style>
+      #inset-label {
+        position: fixed;
+        bottom: 31%;
+        right: 1%;
+        font-size: 11px;
+        color: rgba(255,255,255,0.5);
+        pointer-events: none;
+        font-family: system-ui, sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage"><canvas id="c"></canvas></div>
+    <div class="overlay">
+      <h1>05 · Cameras</h1>
+      <p>Perspective vs Orthographic · View frustum visualised.<br />
+         <strong>Main:</strong> active camera with OrbitControls.<br />
+         <strong>Inset (bottom-right):</strong> overview cam showing frustum.<br />
+         Use the GUI to switch projection, tweak FOV, near &amp; far.</p>
+    </div>
+    <div id="inset-label">overview cam</div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

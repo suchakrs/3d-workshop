@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>08 · Point cloud — WebGPU + TSL (1M points)</title>
+    <link rel="stylesheet" href="../../src/styles/base.css" />
+  </head>
+  <body>
+    <div class="stage"><canvas id="c"></canvas></div>
+    <div class="overlay">
+      <h1>08 · Point cloud (WebGPU + TSL)</h1>
+      <p>~1,000,000 synthetic scan points. Orbit to fly around the terrain.</p>
+      <p>Renderer: <span id="backend" class="stat">detecting…</span></p>
+      <p>FPS: <span id="fps" class="stat">—</span> · Points: <span id="count" class="stat">—</span></p>
+      <p id="warn" class="warn" style="display:none">
+        WebGPU not available — falling back to WebGL <code>THREE.Points</code>.
+        Open in a recent Chrome/Edge for the TSL path.
+      </p>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
